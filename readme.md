@@ -1,17 +1,21 @@
 # 数据标注平台使用说明
-### 代码已开源 
-代码仓库地址   
-https://jugs.coding.net/public/tools/data-annotations/git  
-https://github.com/kej-shas/data-annotations.git
-## 软件安装
 
-首先你需要安装Python
+### 代码已开源
+
+代码仓库地址  
+https://github.com/kej-shas/data-annotations
+
+## 环境配置
+
+首先你需要安装Python  
 然后安装Python包
 
 ```shell
 pip install tornado
 pip install natsort
 ```
+
+创建result文件夹，存储本地数据备份
 
 ## 数据集地址修改
 
