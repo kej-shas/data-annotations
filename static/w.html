@@ -19,7 +19,7 @@
                 <div class="dot"></div>
                 <div class="dot"></div>
                 <div class="dot"></div>
-                <input type="button" id="synchronization" value="提交至远程服务器"/>
+
             </div>
 
             <img id="inputImg" data-it="" src="" alt="Car">
@@ -31,10 +31,11 @@
 
 
                 </form>
-                当前进度
+                当前信息
                 <div id="progress">12/34</div>
                 <iframe name="translation" id="translation" style="width: 100%;height: 300px"
                         src="https://dict.cnki.net/index"></iframe>
+                <input type="text" id="goto" placeholder="go to"/>
             </div>
         </div>
 
@@ -83,21 +84,20 @@
         setCookie("randomUsername", uuid())
     }
     console.log(getCookie("randomUsername"))
-    var all_data = []
-    var index = 0
-    $('button').click(function () {
-        $('.pop-up').addClass('open');
-    });
-
-    $('.pop-up .close').click(function () {
-        $('.pop-up').removeClass('open');
-    });
-    var translation = $("#translation").contents()
-    translation.find(".ecp_top-nav").remove()
-    translation.find("translateLeft").val("123")
-    $("#inputText").change(function (it) {
-        console.log($("#inputText").val())
-        console.log($("#inputImg").attr("data-it"))
+    var sids = []
+    var groups_file = []
+    var person_index = 0
+    var file_index = 0
+    var sid = []
+    var person_files_keys = []
+    var group_index = 0
+    $.getJSON("/init", {}, function (data) {
+        sids = data.data.sids
+        groups_file = data.data.groups_file
+        getPageData(0)
+        sid = sids[person_index]
+        person_files_keys = Object.keys(groups_file[sids[person_index]]['data'])
+        group_index = groups_file[sids[person_index]]['group']
     })
     $(document).keydown(function (event) {
         if (event.keyCode === 37 || event.keyCode === 38) {
@@ -107,21 +107,11 @@
                 type: 'success',
                 duration: 500
             });
-
-            if (index === 0) {
-                $.message({
-                    message: '已经到达顶部',
-                    type: 'success',
-                    duration: 500
-                });
-                upDataPathAndText(path_, text, index)
-                return;
-            }
             var inputText = $("#inputText")
             var text = inputText.val()
             var path_ = inputText.attr("data-index")
-            index = index - 1
-            upDataPathAndText(path_, text, index)
+            var sid = inputText.attr("data-sid")
+            upDataPathAndText(sid, path_, text, -1)
 
 
         }
@@ -131,49 +121,87 @@
                 type: 'success',
                 duration: 500
             });
-            if (index === all_data.length - 1) {
-                $.message({
-                    message: '已经到达底部',
-                    type: 'success',
-                    duration: 500
-                });
-                upDataPathAndText(path_, text, index)
-                return;
-            }
             var inputText = $("#inputText")
             var text = inputText.val()
             var path_ = inputText.attr("data-index")
-            index = index + 1
-            upDataPathAndText(path_, text, index)
+            var sid = inputText.attr("data-sid")
+            upDataPathAndText(sid, path_, text, +1)
         }
     });
-    $.getJSON("/init", {}, function (data) {
-        all_data = data.data
-        getPageData(index)
+
+    $("#goto").on('input', function (t) {
+        console.log($("#goto").val())
+        input_page = $("#goto").val()
+        var page = parseInt(input_page)
+        if (page > sids.length * person_files_keys.length||page<=0) {
+            $.message({
+                message: '页数错误',
+                type: 'success',
+                duration: 500
+            });
+        }else {
+            person_index=parseInt((page-1)/person_files_keys.length)
+            file_index=parseInt((page-1)%person_files_keys.length)
+            getPageData(0)
+        }
     })
 
-    function getPageData(index) {
-        var paths = "/data/" + all_data[index]
-        $.get(paths + ".txt", {}, function (txt) {
-
-            if (txt === "\n") {
-                $("#inputText").val("")
+    function getPageData(flag) {
+        if (flag === -1) {
+            if (file_index + flag < 0) {
+                if (person_index - 1 < 0) {
+                    $.message({
+                        message: '已经到达顶部',
+                        type: 'success',
+                        duration: 500
+                    });
+                } else {
+                    person_index -= 1
+                    sid = sids[person_index]
+                    person_files_keys = Object.keys(groups_file[sids[person_index]]['data'])
+                    group_index = groups_file[sids[person_index]]['group']
+                    file_index = person_files_keys.length - 1
+                }
             } else {
-                $("#inputText").val(txt.replace("\n", ""))
+                file_index += flag
             }
-
-            $("#inputImg").attr("src", paths + ".jpg")
-            $("#inputText").attr("data-index", all_data[index])
-            $("#progress").html((index + 1) + "/" + all_data.length + "=" + (index + 1) / all_data.length * 100 + "%")
-        })
+        } else if (flag === +1) {
+            if (file_index + flag >= person_files_keys.length) {
+                if (person_index + 1 >= sids.length) {
+                    $.message({
+                        message: '已经到达底部',
+                        type: 'success',
+                        duration: 500
+                    });
+                } else {
+                    person_index += 1
+                    sid = sids[person_index]
+                    person_files_keys = Object.keys(groups_file[sids[person_index]]['data'])
+                    group_index = groups_file[sids[person_index]]['group']
+                    file_index = 0
+                }
+            } else {
+                file_index += flag
+            }
+        } else {
+            sid = sids[person_index]
+            person_files_keys = Object.keys(groups_file[sids[person_index]]['data'])
+            group_index = groups_file[sids[person_index]]['group']
+        }
+        var paths = "/data/" + group_index + "/" + person_files_keys[file_index]
+        $("#inputImg").attr("src", paths + ".jpg")
+        $("#inputText").attr("data-index", person_files_keys[file_index])
+        $("#inputText").attr("data-sid", sid)
+        $("#inputText").val(groups_file[sids[person_index]]['data'][person_files_keys[file_index]].replace("\n", ""))
+        $("#progress").html("当前sid:"+sid+" 组号:"+group_index+" 进度:"+(person_index * person_files_keys.length + (file_index + 1)) + "/" + sids.length * person_files_keys.length + "=" + (person_index * person_files_keys.length + (file_index + 1)) / (sids.length * person_files_keys.length) * 100 + "%")
 
     }
 
-    function upDataPathAndText(path, text, index) {
-        $.post("/upload", {text: text, path: path}, function (data) {
+    function upDataPathAndText(sid, path, text, flag) {
+        $.post("/upload", {sid: sid, text: text, path: path}, function (data) {
                 console.log(data.message === "ok")
                 if (data.message === "ok") {
-                    getPageData(index)
+                    getPageData(flag)
                 } else {
                     $.message({
                         message: '网络不稳定',

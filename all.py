@@ -20,8 +20,44 @@ server_state = False
 define("port", default=8888, help="运行端口", type=int)
 config_path = yaml.load(open("config.yaml", "r", encoding="utf-8"), Loader=yaml.FullLoader)
 define("root_path",
-       default=f"{config_path['root_path']}/{config_path['DatasetPath']['times']}/{config_path['DatasetPath']['group']}",
+       default=f"{config_path['root_path']}/{config_path['DatasetPath']['times']}/",
        help="运行路径", type=str)
+define("times",
+       default=config_path['DatasetPath']['times'],
+       help="运行路径", type=int)
+
+
+def get_groups_file():
+    groups = {}
+    for i in range(1, 11):
+        path_group = os.listdir(f"{options.root_path}/{i}/alstonia_scholaris_diseased/")[0].split(".")[0]
+        groups[f"alstonia_scholaris_diseased/{path_group}"] = i
+
+    json_dicts = []
+    sids = []
+    for jsonfile in os.listdir("result"):
+        with open(f"result/{jsonfile}", "r", encoding="utf-8") as f:
+            fd = json.load(f)
+        sid = jsonfile.split(".")[0]
+        fd["sid"] = sid
+        sids.append(sid)
+        json_dicts.append(fd)
+
+    groups_file = {}
+
+    for j in json_dicts:
+        for group, v in groups.items():
+            j: dict
+            if group in j.keys():
+                sid = j["sid"]
+                del j["sid"]
+                groups_file[sid] = {"group": v, "data": j}
+
+    return groups_file, sids
+
+
+groups_file, sids = get_groups_file()
+
 
 class MainHandler(tornado.web.RequestHandler, ABC):
     def get(self):
@@ -37,43 +73,49 @@ class InitDataHandler(BaseHandler, ABC):
     def get(self):
         file_list = []
 
-        for dir_ in os.listdir(options.root_path):
-            for file in os.listdir(f"{options.root_path}/{dir_}/"):
-                if file.split(".")[-1] == "jpg":
-                    file_list.append(f"{dir_}/{file.split('.')[0]}")
-        self.write(json.dumps({'message': 'ok', "data": list(natsort.natsorted(file_list))}))
+        # for dir_ in os.listdir(options.root_path):
+        #     for file in os.listdir(f"{options.root_path}/{dir_}/"):
+        #         if file.split(".")[-1] == "jpg":
+        #             file_list.append(f"{dir_}/{file.split('.')[0]}")
+        self.write(json.dumps({'message': 'ok', "data": {"sids": sids, "groups_file": groups_file}}))
 
 
 class UpDataPathAndText(BaseHandler, ABC):
     def post(self):
+        sid=self.get_body_argument("sid", "")
         path = self.get_body_argument("path", "")
         text = self.get_body_argument("text", "")
-        with open(f"{options.root_path}/{path}.txt", "w", encoding="utf-8", newline="") as f:
-            f.write(text.replace("\n", "") + "\n")
-        f.close()
+        # with open(f"{options.root_path}/{path}.txt", "w", encoding="utf-8", newline="") as f:
+        #     f.write(text.replace("\n", "") + "\n")
+        # f.close()
+        groups_file[sid]["data"][path]=text
+        with open(f"result/{sid}.json", "w", encoding="utf-8") as f:
+            json.dump(groups_file[sid]["data"], f, ensure_ascii=False)
+            f.close()
+
         self.write(json.dumps({'message': 'ok', }))
 
 
-class SynchronizationDataToServer(BaseHandler, ABC):
-    def post(self):
-        randomUsername = self.get_argument("randomUsername", "")
-        data = self.getFileTxtDict()
-
-        if randomUsername == "":
-            self.write(json.dumps({'message': 'error', "result": "Your pc have not cookie"}))
-        else:
-            id_files = [f"{i}".split(".")[0] for i in os.listdir("result")]
-            print(id_files)
-            if randomUsername in id_files or len(id_files) == 0:
-                result = requests.post("http://124.221.156.245:8889/upload", json=data,
-                                       params={"randomUsername": randomUsername}).json()
-                self.write(json.dumps(result))
-
-            else:
-                self.write(json.dumps({'message': 'error', "result": "只能使用一个浏览器提交"}))
-        with open(f"result/{randomUsername}.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-            f.close()
+# class SynchronizationDataToServer(BaseHandler, ABC):
+#     def post(self):
+#         randomUsername = self.get_argument("randomUsername", "")
+#         data = self.getFileTxtDict()
+#
+#         if randomUsername == "":
+#             self.write(json.dumps({'message': 'error', "result": "Your pc have not cookie"}))
+#         else:
+#             id_files = [f"{i}".split(".")[0] for i in os.listdir("result")]
+#             print(id_files)
+#             if randomUsername in id_files or len(id_files) == 0:
+#                 result = requests.post("http://124.221.156.245:8889/upload", json=data,
+#                                        params={"randomUsername": randomUsername}).json()
+#                 self.write(json.dumps(result))
+#
+#             else:
+#                 self.write(json.dumps({'message': 'error', "result": "只能使用一个浏览器提交"}))
+#         with open(f"result/{randomUsername}.json", "w", encoding="utf-8") as f:
+#             json.dump(data, f, ensure_ascii=False)
+#             f.close()
 
     def getFileTxtDict(self):
         root_path = options.root_path
@@ -103,7 +145,7 @@ application = tornado.web.Application(
         (r"/", MainHandler),
         (r"/init", InitDataHandler),
         (r"/upload", UpDataPathAndText),
-        (r"/synchronization", SynchronizationDataToServer),
+        # (r"/synchronization", SynchronizationDataToServer),
         (r"/data/(.*)", MyStaticFileHandler, {"path": options.root_path}),
         (r"/(.*)", MyStaticFileHandler, {"path": "static/"})
 
@@ -144,7 +186,7 @@ def quit_window(icon, item):
 
 
 def show_browser(icon, item: item):
-    webbrowser.open('http://localhost:8888/index.html')
+    webbrowser.open('http://localhost:8888/w.html')
 
 
 def worker(ws, loop):
@@ -154,7 +196,7 @@ def worker(ws, loop):
 
 if __name__ == "__main__":
     start_tornado()
-    webbrowser.open('http://localhost:8888/index.html')
+    webbrowser.open('http://localhost:8888/w.html')
     menu = (item('浏览器打开', show_browser), item('退出', quit_window))
     image = Image.open("ico.png")
     icon = pystray.Icon("数据标注", image, "植物数据集", menu)
